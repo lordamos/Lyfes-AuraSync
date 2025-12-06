@@ -1,0 +1,7 @@
+{
+  "name": "Copy of AuraSync",
+  "description": "AuraSync provides users with deeply personalized esoteric insights by generating Human Design charts based on their birth data, powered by AI.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
