@@ -1,6 +1,6 @@
 
-import React, { useState, useRef, useMemo } from 'react';
-import { Share2, Volume2, VolumeX, Users, Heart, Baby, User } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Share2, Volume2, VolumeX } from 'lucide-react';
 import { HumanDesignChart, Center, ChartProperty, Gate, NumerologyChart, SynastryReport, AllReports, IndividualBirthData, AstrologyChart, PlanetaryPlacement, Aspect, HousePlacement } from '../types';
 import { BodyGraph } from './BodyGraph';
 import { NatalChart } from './NatalChart';
@@ -506,84 +506,31 @@ const SynastryReportCard: React.FC<{ report: SynastryReport; speak: (text: strin
   );
 };
 
-interface SynastryFilterProps {
-  individuals: IndividualBirthData[];
-  selectedIds: string[];
-  onIdFilterChange: (ids: string[]) => void;
-  selectedType: string;
-  onTypeFilterChange: (type: string) => void;
-}
-
-const SynastryFilter: React.FC<SynastryFilterProps> = ({ individuals, selectedIds, onIdFilterChange, selectedType, onTypeFilterChange }) => {
+const SynastryFilter: React.FC<{ individuals: IndividualBirthData[], onFilterChange: (filters: string[]) => void }> = ({ individuals, onFilterChange }) => {
+  const [synastryFilter, setSynastryFilter] = useState<string[]>([]);
   
-  const handleIdToggle = (personId: string) => {
-    const newIds = selectedIds.includes(personId) ? selectedIds.filter(id => id !== personId) : [...selectedIds, personId];
-    onIdFilterChange(newIds);
+  const handleFilterToggle = (personId: string) => {
+    const newFilter = synastryFilter.includes(personId) ? synastryFilter.filter(id => id !== personId) : [...synastryFilter, personId];
+    setSynastryFilter(newFilter);
+    onFilterChange(newFilter);
   };
 
-  const clearFilters = () => {
-    onIdFilterChange([]);
-    onTypeFilterChange('ALL');
+  const clearFilter = () => {
+    setSynastryFilter([]);
+    onFilterChange([]);
   };
-
-  const typeOptions = [
-    { id: 'ALL', label: 'All', icon: Users },
-    { id: 'PARTNER', label: 'Partner', icon: Heart },
-    { id: 'PARENT_CHILD', label: 'Parent-Child', icon: Baby },
-    { id: 'SIBLING', label: 'Sibling', icon: User },
-  ];
 
   return (
-    <div className="mb-8 glass-card p-6 rounded-xl space-y-6">
-      
-      {/* Type Filter */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4 border-b border-white/10 pb-6">
-        <span className="font-semibold text-gray-800 dark:text-gray-300 text-sm uppercase tracking-wider min-w-[80px]">Type</span>
-        <div className="flex flex-wrap gap-2">
-          {typeOptions.map(option => (
-            <button
-              key={option.id}
-              onClick={() => onTypeFilterChange(option.id)}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all duration-200 ${
-                selectedType === option.id 
-                  ? 'bg-brand-primary text-white shadow-lg scale-105' 
-                  : 'bg-white/10 dark:bg-black/20 text-gray-600 dark:text-gray-400 hover:bg-white/20 dark:hover:bg-white/5'
-              }`}
-            >
-              <option.icon size={16} />
-              {option.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Individual Filter */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-        <span className="font-semibold text-gray-800 dark:text-gray-300 text-sm uppercase tracking-wider min-w-[80px]">People</span>
-        <div className="flex flex-wrap gap-2">
-          {individuals.filter(ind => ind.role).map(person => (
-             <div key={person.id} className="relative">
-                <input 
-                  type="checkbox" 
-                  id={`filter-checkbox-${person.id}`} 
-                  checked={selectedIds.includes(person.id)} 
-                  onChange={() => handleIdToggle(person.id)} 
-                  className="sr-only peer" 
-                />
-                <label 
-                  htmlFor={`filter-checkbox-${person.id}`} 
-                  className="px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200 ease-in-out cursor-pointer block bg-white/30 dark:bg-black/20 text-gray-800 dark:text-gray-200 border border-white/20 hover:border-brand-primary/50 peer-checked:bg-brand-primary peer-checked:text-white peer-checked:border-brand-primary peer-checked:shadow-lg"
-                >
-                  {person.name}
-                </label>
-              </div>
-          ))}
-        </div>
-        {(selectedIds.length > 0 || selectedType !== 'ALL') && (
-          <button onClick={clearFilters} className="text-xs text-brand-primary dark:text-indigo-400 hover:underline sm:ml-auto pt-2 sm:pt-0">
-            Reset Filters
-          </button>
-        )}
+    <div className="mb-8 glass-card p-4 rounded-lg">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <span className="font-semibold text-gray-800 dark:text-gray-300 mr-2">Filter Reports:</span>
+        {individuals.filter(ind => ind.role).map(person => (
+           <div key={person.id} className="relative">
+              <input type="checkbox" id={`filter-checkbox-${person.id}`} checked={synastryFilter.includes(person.id)} onChange={() => handleFilterToggle(person.id)} className="sr-only peer" />
+              <label htmlFor={`filter-checkbox-${person.id}`} className="px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200 ease-in-out transform hover:scale-105 cursor-pointer bg-white/30 dark:bg-black/20 text-gray-800 dark:text-gray-200 border border-white/20 peer-checked:bg-brand-primary peer-checked:text-white peer-checked:border-brand-primary peer-checked:shadow-lg">{person.name}</label>
+            </div>
+        ))}
+        {synastryFilter.length > 0 && (<button onClick={clearFilter} className="text-sm text-brand-primary dark:text-indigo-400 hover:underline ml-2">Clear Filter</button>)}
       </div>
     </div>
   );
@@ -603,60 +550,7 @@ export const ChartDisplay: React.FC<ChartDisplayProps> = ({ allReports, individu
 
 
   const [activeTab, setActiveTab] = useState(availableTabs[0]);
-  
-  // Synastry Filter State
-  const [synastryTypeFilter, setSynastryTypeFilter] = useState<string>('ALL');
-  const [synastryIdFilter, setSynastryIdFilter] = useState<string[]>([]);
-
-  const filteredSynastryReports = useMemo(() => {
-    return (allReports.synastryReports || []).filter(report => {
-      // 1. Filter by ID (Inclusive)
-      let matchesId = true;
-      if (synastryIdFilter.length > 0) {
-        // Show report if ANY of the selected participants are in it.
-        // Or should it be if ALL selected participants are in it? 
-        // Standard UX for "filtering by person" usually means "Show me stuff related to Person X".
-        // If I select Person X and Person Y, I probably want to see the report between X and Y.
-        // Current Logic: If filters are present, report must involve at least one of them?
-        // Previous logic was: `filters.every(...)` which means ALL selected must be in the report.
-        // Let's stick to: If IDs are selected, show reports that involve *any* of the selected IDs.
-        // Wait, if I select Mom, I want all Mom's reports. If I select Mom and Dad, I probably want the report BETWEEN Mom and Dad.
-        // Let's implement intersection: Report must contain ALL selected IDs.
-        // If only 1 ID selected, show all reports for that ID.
-        // If 0 IDs selected, show all.
-        
-        const participants = [report.person1.id, report.person2.id];
-        matchesId = synastryIdFilter.every(id => participants.includes(id));
-      }
-
-      // 2. Filter by Type
-      let matchesType = true;
-      const roles = [report.person1.role, report.person2.role];
-      const hasChild = roles.includes('child');
-      const childCount = roles.filter(r => r === 'child').length;
-      const hasPartnerOrPrimary = roles.some(r => r === 'primary' || r === 'partner');
-
-      switch (synastryTypeFilter) {
-        case 'PARTNER':
-          // Both are primary or partner (no children)
-          matchesType = childCount === 0; 
-          break;
-        case 'PARENT_CHILD':
-          // One adult, one child
-          matchesType = childCount === 1 && hasPartnerOrPrimary;
-          break;
-        case 'SIBLING':
-          // Both are children
-          matchesType = childCount === 2;
-          break;
-        default:
-          matchesType = true;
-      }
-
-      return matchesId && matchesType;
-    });
-  }, [allReports.synastryReports, synastryIdFilter, synastryTypeFilter]);
-
+  const [filteredSynastryReports, setFilteredSynastryReports] = useState(allReports.synastryReports || []);
 
   const primaryIndividual = individuals.find(ind => ind.role === 'primary') || individuals[0];
   const primaryDailyGuidance = allReports.dailyGuidanceReports?.find(report => report.personId === primaryIndividual.id);
@@ -701,6 +595,14 @@ export const ChartDisplay: React.FC<ChartDisplayProps> = ({ allReports, individu
       </div>
     );
   }
+
+  const handleSynastryFilterChange = (filters: string[]) => {
+    const newFilteredReports = (allReports.synastryReports || []).filter(report => {
+      if (filters.length === 0) return true;
+      return filters.every(filterId => report.person1.id === filterId || report.person2.id === filterId);
+    });
+    setFilteredSynastryReports(newFilteredReports);
+  };
   
   interface TabButtonProps {
     label: string;
@@ -791,13 +693,7 @@ export const ChartDisplay: React.FC<ChartDisplayProps> = ({ allReports, individu
 
         {activeTab === 'Synastry' && (
           <div className="animate-fade-in">
-            <SynastryFilter 
-              individuals={individuals} 
-              selectedIds={synastryIdFilter}
-              onIdFilterChange={setSynastryIdFilter}
-              selectedType={synastryTypeFilter}
-              onTypeFilterChange={setSynastryTypeFilter}
-            />
+            <SynastryFilter individuals={individuals} onFilterChange={handleSynastryFilterChange} />
             <div className="space-y-8">
               {filteredSynastryReports.length > 0 ? (
                   filteredSynastryReports.map(report => (

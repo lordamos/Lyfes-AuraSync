@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 // @ts-ignore
 import { initializeApp } from "firebase/app";
@@ -31,7 +30,8 @@ import {
   Volume2, 
   VolumeX, 
   Mic,     
-  MicOff   
+  MicOff,
+  Music // Added Music icon
 } from 'lucide-react';
 import type { 
   AllReports, 
@@ -43,82 +43,8 @@ import type {
   NumerologyChart,
   AstrologyChart
 } from '../types';
-import { generatePersonalizedQuestions, generateSinglePersonalizedQuestion } from '../services/geminiService';
-import { NatalChart } from './NatalChart';
-
-declare global {
-  interface Window {
-    SpeechRecognition: {
-      new (): SpeechRecognition;
-    };
-    webkitSpeechRecognition: {
-      new (): SpeechRecognition;
-    };
-  }
-
-  interface SpeechRecognition extends EventTarget {
-    grammars: SpeechGrammarList;
-    lang: string;
-    continuous: boolean;
-    interimResults: boolean;
-    maxAlternatives: number;
-    serviceURI: string;
-    abort(): void;
-    start(): void;
-    stop(): void;
-    onresult: ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => any) | null;
-    onnomatch: ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => any) | null;
-    onerror: ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => any) | null;
-    onstart: ((this: SpeechRecognition, ev: Event) => any) | null;
-    onend: ((this: SpeechRecognition, ev: Event) => any) | null;
-    onaudiostart: ((this: SpeechRecognition, ev: Event) => any) | null;
-    onaudioend: ((this: SpeechRecognition, ev: Event) => any) | null;
-    onsoundstart: ((this: SpeechRecognition, ev: Event) => any) | null;
-    onsoundend: ((this: SpeechRecognition, ev: Event) => any) | null;
-    onspeechstart: ((this: SpeechRecognition, ev: Event) => any) | null;
-    onspeechend: ((this: SpeechRecognition, ev: Event) => any) | null;
-  }
-
-  interface SpeechRecognitionEvent extends Event {
-    readonly resultIndex: number;
-    readonly results: SpeechRecognitionResultList;
-  }
-
-  interface SpeechRecognitionResultList {
-    readonly length: number;
-    item(index: number): SpeechRecognitionResult;
-    [index: number]: SpeechRecognitionResult;
-  }
-
-  interface SpeechRecognitionResult {
-    readonly isFinal: boolean;
-    readonly length: number;
-    item(index: number): SpeechRecognitionAlternative;
-    [index: number]: SpeechRecognitionAlternative;
-  }
-
-  interface SpeechRecognitionAlternative {
-    readonly transcript: string;
-    readonly confidence: number;
-  }
-
-  interface SpeechRecognitionErrorEvent extends Event {
-    readonly error: string;
-    readonly message: string;
-  }
-
-  interface SpeechGrammarList {
-    readonly length: number;
-    item(index: number): SpeechGrammar;
-    addFromURI(src: string, weight?: number): void;
-    addFromString(string: string, weight?: number): void;
-  }
-
-  interface SpeechGrammar {
-    src: string;
-    weight: number;
-  }
-}
+import { generatePersonalizedQuestions } from '../services/geminiService';
+import { NatalChart } from './NatalChart'; // Fixed import path
 
 // --- FIREBASE CONFIGURATION ---
 let app: any;
@@ -178,7 +104,36 @@ export const LifeOSSection: React.FC<LifeOSSectionProps> = ({ individuals, allRe
   const [view, setView] = useState<'dashboard' | 'quiz' | 'profile'>('dashboard');
   const [activeProfile, setActiveProfile] = useState<LifeOSProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [hasAutoStarted, setHasAutoStarted] = useState(false);
+  
+  // Ambient Audio State
+  const [isAmbientPlaying, setIsAmbientPlaying] = useState(false);
+  const ambientAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Initialize Ambient Audio
+  useEffect(() => {
+    // Using a reliable ambient track (Pixabay license allows free use - 'Space' theme)
+    const audio = new Audio('https://cdn.pixabay.com/audio/2022/05/27/audio_1808fbf07a.mp3'); 
+    audio.loop = true;
+    audio.volume = 0.15; // Set volume to be subtle
+    ambientAudioRef.current = audio;
+
+    return () => {
+      audio.pause();
+      ambientAudioRef.current = null;
+    };
+  }, []);
+
+  const toggleAmbient = () => {
+    if (!ambientAudioRef.current) return;
+    
+    if (isAmbientPlaying) {
+      ambientAudioRef.current.pause();
+      setIsAmbientPlaying(false);
+    } else {
+      ambientAudioRef.current.play().catch(e => console.error("Ambient audio playback failed:", e));
+      setIsAmbientPlaying(true);
+    }
+  };
 
   // Auth & Data Sync
   useEffect(() => {
@@ -225,14 +180,19 @@ export const LifeOSSection: React.FC<LifeOSSectionProps> = ({ individuals, allRe
     return () => unsubscribe();
   }, [user]);
 
-  // Auto-Start for Primary User if no profile exists
+  // Auto-start for primary user logic
+  const [hasAutoStarted, setHasAutoStarted] = useState(false);
   useEffect(() => {
-    if (!loading && profiles.length === 0 && individuals.length > 0 && !hasAutoStarted) {
-      const primary = individuals.find(ind => ind.role === 'primary');
-      if (primary) {
-        setHasAutoStarted(true);
-        handleStartNew(primary.id);
-      }
+    if (!loading && profiles.length === 0 && !hasAutoStarted) {
+        const primaryPerson = individuals.find(ind => ind.role === 'primary');
+        if (primaryPerson) {
+            // Check if primary person already has a profile (redundant with profiles.length===0 but safe)
+            const existingProfile = profiles.find(p => p.personId === primaryPerson.id);
+            if (!existingProfile) {
+                setHasAutoStarted(true);
+                handleStartNew(primaryPerson.id);
+            }
+        }
     }
   }, [loading, profiles, individuals, hasAutoStarted]);
 
@@ -242,7 +202,8 @@ export const LifeOSSection: React.FC<LifeOSSectionProps> = ({ individuals, allRe
   const handleStartNew = (personIdToLink: string) => {
     const person = individuals.find(ind => ind.id === personIdToLink);
     if (!person) {
-      alert("Selected individual not found.");
+      // Alert removed for auto-start flow, or handle gracefully
+      console.warn("Selected individual not found.");
       return;
     }
     
@@ -295,8 +256,8 @@ export const LifeOSSection: React.FC<LifeOSSectionProps> = ({ individuals, allRe
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-black text-slate-200 font-sans selection:bg-emerald-500/30 rounded-xl overflow-hidden shadow-2xl border border-white/5 relative">
       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500/0 via-emerald-500/50 to-emerald-500/0 opacity-50"></div>
       
-      {/* Header - Minimal for embedded component */}
-      <header className="border-b border-white/5 bg-slate-950/80 backdrop-blur-md sticky top-0 z-20 hidden lg:block"> 
+      {/* Header */}
+      <header className="border-b border-white/5 bg-slate-950/80 backdrop-blur-md sticky top-0 z-20 block"> 
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3 text-emerald-400 cursor-pointer group" onClick={() => setView('dashboard')}>
             <div className="p-1.5 rounded bg-emerald-500/10 border border-emerald-500/20 group-hover:border-emerald-500/50 transition-colors">
@@ -304,14 +265,29 @@ export const LifeOSSection: React.FC<LifeOSSectionProps> = ({ individuals, allRe
             </div>
             <span className="font-bold tracking-[0.2em] font-mono text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400 text-sm">LYFE_OS v1.0</span>
           </div>
-          {view !== 'dashboard' && (
+          
+          <div className="flex items-center gap-2">
             <button 
-              onClick={() => setView('dashboard')}
-              className="text-[10px] font-mono text-slate-500 hover:text-emerald-400 transition-colors border border-transparent hover:border-emerald-500/20 px-3 py-1.5 rounded-full uppercase tracking-wider flex items-center gap-2"
+                onClick={toggleAmbient}
+                className={`text-[10px] font-mono transition-all border px-3 py-1.5 rounded-full uppercase tracking-wider flex items-center gap-2 
+                  ${isAmbientPlaying 
+                    ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10 shadow-[0_0_10px_rgba(16,185,129,0.2)]' 
+                    : 'text-slate-500 border-transparent hover:text-emerald-400 hover:border-emerald-500/20'
+                  }`}
             >
-              <LayoutGrid size={12} /> Dashboard
+              <Music size={12} className={isAmbientPlaying ? 'animate-pulse' : ''} />
+              <span className="hidden sm:inline">{isAmbientPlaying ? 'Ambient On' : 'Ambient Off'}</span>
             </button>
-          )}
+
+            {view !== 'dashboard' && (
+                <button 
+                onClick={() => setView('dashboard')}
+                className="text-[10px] font-mono text-slate-500 hover:text-emerald-400 transition-colors border border-transparent hover:border-emerald-500/20 px-3 py-1.5 rounded-full uppercase tracking-wider flex items-center gap-2"
+                >
+                <LayoutGrid size={12} /> <span className="hidden sm:inline">Dashboard</span>
+                </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -500,9 +476,6 @@ function QuizWizard({ initialData, allReports, individuals, onCancel, onComplete
   const [questions, setQuestions] = useState<PersonalizedQuestion[]>([]);
   const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(true);
   const [questionError, setQuestionError] = useState<string | null>(null);
-  
-  // New state for additional question generation
-  const [isAddingQuestion, setIsAddingQuestion] = useState(false);
 
   const [isSpeechToTextListening, setIsSpeechToTextListening] = useState(false);
   const [currentSpeechTranscript, setCurrentSpeechTranscript] = useState('');
@@ -531,7 +504,18 @@ function QuizWizard({ initialData, allReports, individuals, onCancel, onComplete
     allReports.astrologyCharts.find(chart => chart.personId === formData.personId)
   , [allReports.astrologyCharts, formData.personId]);
 
-  // Initial Question Generation
+  // --- AUTO START ARCHITECT INTRO ---
+  useEffect(() => {
+    // Only run this once when the component mounts and we are at step 0 (initialization)
+    // The "Architect" introduces themselves.
+    if (step === 0 && !isGeneratingQuestions && questions.length === 0) {
+        const introText = `Identity detected: ${formData.name}. I am the Architect. I have initialized your energetic blueprint. Before we build your system, I need to calibrate your psychological drivers. Please confirm your role to begin the sequence.`;
+        // Use a unique ID for this intro speech
+        speak(introText, `architect-intro-${formData.personId}`);
+    }
+  }, [step, isGeneratingQuestions, questions.length, formData.name, formData.personId, speak]);
+
+
   useEffect(() => {
     const fetchQuestions = async () => {
       // 1. If personalized questions are already part of the initial data (e.g., loaded from Firestore), use them directly.
@@ -572,14 +556,6 @@ function QuizWizard({ initialData, allReports, individuals, onCancel, onComplete
     };
     fetchQuestions();
   }, [currentIndividual, currentHDSChart, currentNumChart, currentAstroChart, formData.personId, formData.personalizedQuestions]);
-
-  // Introduction Speech Logic
-  useEffect(() => {
-    if (step === 0 && !isGeneratingQuestions && !questionError && formData.name) {
-       const introText = `Identity detected: ${formData.name}. I am the Architect. I have initialized your energetic blueprint. Before we build your system, I need to calibrate your psychological drivers. Please confirm your role to begin the sequence.`;
-       speak(introText, 'architect-intro');
-    }
-  }, [step, isGeneratingQuestions, questionError, formData.name, speak]);
 
   const currentAnswer = formData.answers[questions[step - 1]?.id] || '';
 
@@ -712,46 +688,15 @@ function QuizWizard({ initialData, allReports, individuals, onCancel, onComplete
     setStep(step - 1);
   };
 
-  const handleGenerateNewQuestion = async () => {
-    if (!currentIndividual || !currentHDSChart || !currentNumChart || !currentAstroChart) return;
-    
-    setIsAddingQuestion(true);
-    try {
-      const newQuestion = await generateSinglePersonalizedQuestion(
-        currentIndividual,
-        currentHDSChart,
-        currentNumChart,
-        currentAstroChart,
-        questions
-      );
-      
-      const updatedQuestions = [...questions, newQuestion];
-      setQuestions(updatedQuestions);
-      setFormData(prev => ({
-        ...prev,
-        personalizedQuestions: updatedQuestions,
-        answers: { ...prev.answers, [newQuestion.id]: '' } // Initialize empty answer
-      }));
-      setStep(updatedQuestions.length); // Jump to the new question
-    } catch (e) {
-      console.error("Failed to add question", e);
-      alert("The Architect could not formulate a new query at this time.");
-    } finally {
-      setIsAddingQuestion(false);
-    }
-  };
-
   if (step === 0) {
     return (
       <div className="max-w-xl mx-auto bg-slate-900/50 backdrop-blur-xl p-10 rounded-3xl border border-white/10 shadow-2xl animate-fade-in relative overflow-hidden">
         <div className="absolute top-0 right-0 p-12 bg-emerald-500/10 blur-3xl rounded-full pointer-events-none -mr-12 -mt-12"></div>
         
-        <div className="flex items-center gap-3 mb-8 relative z-10">
-           <div className={`p-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 ${isGeneratingQuestions ? 'animate-pulse' : ''}`}>
-              <BrainCircuit size={28} className="text-emerald-400" />
-           </div>
-           <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400">User Initialization</h2>
-        </div>
+        <h2 className="text-3xl font-bold mb-8 text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400 relative z-10 flex items-center gap-3">
+            User Initialization
+            <BrainCircuit size={28} className="text-emerald-400 animate-pulse" />
+        </h2>
         
         {isGeneratingQuestions ? (
           <div className="text-center py-12 space-y-8">
@@ -873,12 +818,8 @@ function QuizWizard({ initialData, allReports, individuals, onCancel, onComplete
           
           <div className="relative group/input">
             <textarea
-              className={`w-full h-40 bg-black/20 border rounded-2xl p-6 text-white text-lg 
-                focus:outline-none resize-none custom-scrollbar transition-all placeholder:text-slate-600 shadow-inner 
-                ${isSpeechToTextListening 
-                  ? 'border-emerald-500 ring-4 ring-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.4)] bg-slate-950/50' 
-                  : 'border-white/10 focus:border-emerald-500/50 focus:bg-slate-950/50 focus:ring-4 focus:ring-emerald-500/10'
-                }
+              className={`w-full h-40 bg-black/20 border rounded-2xl p-6 text-white text-lg focus:border-emerald-500/50 focus:bg-slate-950/50 focus:ring-4 focus:ring-emerald-500/10 outline-none resize-none custom-scrollbar transition-all placeholder:text-slate-600 shadow-inner 
+                ${isSpeechToTextListening ? 'border-emerald-500 ring-4 ring-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.4)]' : 'border-white/10'}
               `}
               placeholder={isSpeechToTextListening ? "Listening..." : "Input analysis data..."}
               value={currentAnswer + (isSpeechToTextListening ? currentSpeechTranscript : '')} // Show live transcript when listening
@@ -899,69 +840,47 @@ function QuizWizard({ initialData, allReports, individuals, onCancel, onComplete
               <button
                 type="button"
                 onClick={startSpeechToText}
-                className={`absolute bottom-4 right-4 p-3 rounded-full transition-all duration-300 backdrop-blur-sm
-                  ${isSpeechToTextListening 
-                    ? 'bg-emerald-500/20 text-emerald-400 animate-pulse shadow-[0_0_15px_rgba(16,185,129,0.4)] border border-emerald-500/50 opacity-100' 
-                    : 'bg-white/5 text-slate-500 hover:text-emerald-400 hover:bg-white/10 border border-transparent opacity-0 group-hover/input:opacity-100 group-focus-within/input:opacity-100'
-                  }
-                `}
+                className={`absolute bottom-4 right-4 p-2 rounded-full transition-all duration-200 ${isSpeechToTextListening ? 'text-emerald-400 animate-pulse bg-emerald-900/30' : 'text-slate-500 hover:text-emerald-400 hover:bg-white/10'}`}
                 aria-label={isSpeechToTextListening ? "Stop speech input" : "Start speech input"}
                 title={isSpeechToTextListening ? "Stop Speech Input" : "Start Speech Input"}
               >
-                {isSpeechToTextListening ? <MicOff size={20} /> : <Mic size={20} />}
+                {isSpeechToTextListening ? <VolumeX size={20} /> : <Mic size={20} />}
               </button>
             )}
             {!isSpeechToTextListening && ( // Only show "Press Enter" hint when not listening
-              <div className="absolute bottom-4 right-14 text-xs text-slate-600 pointer-events-none opacity-0 group-focus-within/input:opacity-100 transition-opacity">
-                Type or Record
+              <div className="absolute bottom-4 right-4 text-xs text-slate-600 pointer-events-none opacity-0 group-focus-within/input:opacity-100 transition-opacity">
+                Press Enter for new line
               </div>
             )}
           </div>
         </div>
 
-        <div className="flex flex-col gap-4 mt-12 pt-8 border-t border-white/5 relative z-10">
-          <div className="flex justify-between items-center">
-            <button 
-              onClick={handlePrev} 
-              className="text-slate-500 hover:text-white flex items-center gap-2 transition-colors px-4 py-2 hover:bg-white/5 rounded-lg" 
-              disabled={step === 1}
-              style={{ visibility: step === 1 ? 'hidden' : 'visible' }}
-            >
-              <ArrowRight size={16} className="rotate-180"/> Previous
-            </button>
-            <button 
-              onClick={handleNext} 
-              disabled={isSaving}
-              className="px-8 py-3 bg-white text-slate-950 font-bold rounded-xl hover:bg-emerald-50 hover:scale-105 transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.15)]"
-            >
-              {isSaving ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span>
-                  Saving System...
-                </>
-              ) : (
-                <>
-                  {step === questions.length ? 'Generate OS' : 'Next Query'}
-                  <ArrowRight size={18} />
-                </>
-              )}
-            </button>
-          </div>
-          
-          <div className="flex justify-center">
-             <button
-                onClick={handleGenerateNewQuestion}
-                disabled={isAddingQuestion}
-                className="text-xs font-mono text-emerald-400 hover:text-white border border-emerald-500/30 hover:bg-emerald-500/20 px-4 py-2 rounded-full transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-             >
-                {isAddingQuestion ? (
-                   <span className="w-3 h-3 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></span>
-                ) : (
-                   <Sparkles size={12} />
-                )}
-                Generate Deep Dive Question
-             </button>
-          </div>
+        <div className="flex justify-between mt-12 pt-8 border-t border-white/5 relative z-10">
+          <button 
+            onClick={handlePrev} 
+            className="text-slate-500 hover:text-white flex items-center gap-2 transition-colors px-4 py-2 hover:bg-white/5 rounded-lg" 
+            disabled={step === 1}
+            style={{ visibility: step === 1 ? 'hidden' : 'visible' }}
+          >
+             <ArrowRight size={16} className="rotate-180"/> Previous
+          </button>
+          <button 
+            onClick={handleNext} 
+            disabled={isSaving}
+            className="px-8 py-3 bg-white text-slate-950 font-bold rounded-xl hover:bg-emerald-50 hover:scale-105 transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.15)]"
+          >
+            {isSaving ? (
+              <>
+                 <span className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></span>
+                 Saving System...
+              </>
+            ) : (
+              <>
+                {step === questions.length ? 'Generate OS' : 'Next Query'}
+                <ArrowRight size={18} />
+              </>
+            )}
+          </button>
         </div>
       </div>
     </div>
@@ -983,7 +902,7 @@ function ProfileView({ profile, allReports, individuals, onBack, onDelete, speak
   const [mode, setMode] = useState<'view' | 'analyze'>('view');
   const [editedArch, setEditedArch] = useState<LifeOSProfileArch>(profile.arch || DEFAULT_PROFILE_ARCH);
   const [currentJsonInput, setCurrentJsonInput] = useState<string>(JSON.stringify(profile.arch || DEFAULT_PROFILE_ARCH, null, 2));
-  const [isChartModalOpen, setIsChartModalOpen] = useState(false);
+  const [isChartModalOpen, setIsChartModalOpen] = useState(false); // Modal state for full Natal Chart
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [selectedPersonaId, setSelectedPersonaId] = useState<string>('analytical-architect'); // New state for AI persona
 
@@ -1157,7 +1076,7 @@ function ProfileView({ profile, allReports, individuals, onBack, onDelete, speak
                 <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 blur-3xl rounded-full pointer-events-none -mr-10 -mt-10"></div>
                 
                 <div className="flex items-center gap-4 mb-8 relative z-10">
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-950 flex items-center justify-center border border-white/10 shadow-inner group">
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center border border-white/10 shadow-inner group">
                         <User size={32} className="text-indigo-400 group-hover:scale-110 transition-transform" />
                     </div>
                     <div>
@@ -1186,8 +1105,8 @@ function ProfileView({ profile, allReports, individuals, onBack, onDelete, speak
                       {getReportSummary(associatedNumChart, 'Numerology')}
                     </div>
                     <div 
-                      className="p-3 bg-black/20 rounded-xl border border-white/5 hover:border-violet-500/30 hover:bg-violet-500/5 transition-all relative group cursor-pointer" 
-                      onClick={() => associatedAstroChart && setIsChartModalOpen(true)} // Make clickable
+                      className={`p-3 bg-black/20 rounded-xl border border-white/5 hover:border-violet-500/30 hover:bg-violet-500/5 transition-all relative group ${associatedAstroChart ? 'cursor-pointer' : ''}`}
+                      onClick={() => associatedAstroChart && setIsChartModalOpen(true)}
                       role="button" // Add role for accessibility
                       tabIndex={0} // Make focusable
                       aria-label={associatedAstroChart ? `View ${associatedAstroChart.name}'s Natal Chart` : 'No Astrology report found'} // A11y
@@ -1198,8 +1117,8 @@ function ProfileView({ profile, allReports, individuals, onBack, onDelete, speak
                       </div>
                       {getReportSummary(associatedAstroChart, 'Astrology')}
                       {associatedAstroChart && (
-                        <div className="absolute inset-0 bg-violet-600/90 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl backdrop-blur-sm cursor-pointer">
-                           <span className="text-[9px] font-bold text-white flex flex-col items-center gap-1"><Sparkles size={12}/>VIEW</span>
+                        <div className="absolute inset-0 bg-violet-500/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl backdrop-blur-[1px]">
+                           <span className="text-[10px] font-bold text-violet-300 bg-black/50 px-2 py-1 rounded border border-violet-500/30 shadow-lg flex items-center gap-1"><Sparkles size={10}/> VIEW CHART</span>
                         </div>
                       )}
                     </div>
@@ -1362,7 +1281,7 @@ function ProfileView({ profile, allReports, individuals, onBack, onDelete, speak
                                   <div className={`w-48 h-48 rounded-full border ${driveAttrs.borderColor} absolute animate-[spin_12s_linear_infinite]`}></div>
                                   <div className={`w-32 h-32 rounded-full border ${driveAttrs.borderColor} absolute animate-[spin_8s_linear_infinite_reverse] border-dashed`}></div>
                                   <div className={`w-3 h-3 rounded-full ${driveAttrs.color.replace('text-', 'bg-')} shadow-[0_0_20px_rgba(255,255,255,0.5)] animate-pulse relative z-10`}></div>
-                               </>
+                                </>
                           )}
                       </div>
                     </div>
